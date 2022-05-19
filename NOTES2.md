@@ -120,3 +120,15 @@ brew install kafka
 brew cask install java8
 
 
+> sudo apt install openjdk-8-jdk
+
+
+## basic operations
+> kafka-console-producer.sh --zookeeper  localhost:2181 --topic first_topic --from-beginning
+> kafka-console-consumer --broker-list localhost:9092 --topic first_topic --producer-property acks=all
+
+## Consumer Group
+
+> kafka-console-consumer --broker-list localhost:9092 --topic first_topic --producer-property acks=all --groujp my-first-appliction
+
+
