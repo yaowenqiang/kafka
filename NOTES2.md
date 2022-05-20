@@ -131,4 +131,7 @@ brew cask install java8
 
 > kafka-console-consumer --broker-list localhost:9092 --topic first_topic --producer-property acks=all --groujp my-first-appliction
 
+> ./bin/kafka-console-consumer.sh --consumer.config config/consumer.properties   --topic third_topic --zookeeper localhost:2181
+> ./bin/kafka-consumer-group.sh --list --zookeeper localhost:2181
+
 
