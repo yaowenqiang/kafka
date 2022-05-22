@@ -134,7 +134,7 @@ brew cask install java8
 > ./bin/kafka-console-consumer.sh --consumer.config config/consumer.properties   --topic third_topic --zookeeper localhost:2181
 > ./bin/kafka-consumer-group.sh --list --zookeeper localhost:2181
 > ./bin/kafka-console-consumer.sh   --topic third_topic --zookeeper localhost:2181   --consumer.config config/consumer2.properties  --from-beginning  --delete-consumer-offsets
-> kafka-consumer-groups.sh  --zookeeper localhost:2181  --describe --group test-consumer-group
+> kafka-consumer-groups.sh  --zookeeper localhost:2181  -describe --group test-consumer-group
 
 ## UI Tools
 
@@ -211,7 +211,106 @@ Just set:
     producerProps.put("idempotentence", true);
 
 
+## Message Compression
+
+Producer usually send dat athat is text-based, for example with JSON data
+In this case ,it is important to apply compression  to the producer
+Compressing is enable at the Producer level and doesn't require any configuration change in the Brokers or in the Consumers
+"Compression-type" can be "none"(default) "gzip", 'Az4", "snappy"
+Compresion is more effective the bigger the batch of message being send to Kafka!
+
+benchmarks here:  https://blog.cloudflare.com/squeezing-the-firehose/
 
 
+Teh compressed batch has the following advantage:
+    Much smaller producer request size(compression ratio up to 4x!)
+    Faster to transfer data over the network => less latance
+    Better throughput
+    Better disk utilisation in Kafka(stored messages on disk are smaller)
+Disdavantages(very minor):
+    Producers muct commit some CPU cycle to compression
+    Consumers must commit some CPu cycles to decompression
+OVerall:
+    consider testing snappy or lz4 for optional speed/ compression ration
 
+
+Message Compression Recommendations:
+
+    Find a compression algorithm that gives you the best performance for your specific data, Test all of them!
+    Always use compression in production and especially if you have high throughput
+    considering tweaking linger.ms and batch.size to have bigger batches, and therefore more compression and higher throughput.
+
+## Linger.ms & batch.size
+
+By default, Kafka tries to send records as soon as possible
+It will have up to 5 requests in flight, meaning up to 5 messages individually send at the same time
+After this, if more messages have to be send while others are in flight, Kafka is smart and will start batching them while they wait to send them all at once
+
+This smart batching allows Kafka to increase throughput while maintaining very low latency
+Batch have higher compression ratio so better effciency
+
+Linger.ms: Number of milliseconds a producer is willing to wait before sending a batch out.(default 0)
+by introducing some lag(for example linger.ms=5), we increase the chances of messages being sent together in a batch
+So at the expense of introducing a small delay, we can increase throughput, compression and efficiency of our producer
+If a batch is full(see batch.size) before the end of the liger.ms period, iw it will be send to Kafka right awa
+
+
+batchsize: Maximum number of bytes that will be included in a batch, The default is 16KB
+
+Increasing a batch size to something like 32KB or 64KB can help increasing thet compression, throughput, and efficiency of requests
+Any message that is bigger than the batch size will not be batched
+A batch is allocated per partition, so make sure that don't set it to a number that's too high, other wise you'll run waste memory!
+(Note: You can monitor the average batch size metric using kafka Producer Metrics)
+
+
+## High throughput Producer Demo
+
+we'll add snappy message compression in our producer
+snappy is very helpful if your messages are text based, for example log lines or JSON documents
+snappy made by goole
+snappy has a good balance of CPU / compression ratio
+We'll also increase the batch.size to 32JB and introduce a small delay through linger.ms(20 ms)
+
+
+## Producer Default partitioner and how keys are hashed
+
+By default, your keys are hashed using the "murmur2" algorithm
+It is most likely perfered to not override the behavior of the partitioner, but it is possible to do so (partitioner.class)
+the formula is :
+targetPartition = Utils.abs(Utils.murmer2(record.key()) % numPartitions
+This means that same key will go to the same partition(we already know this), and adding partitions to a topic will completely alter the formula
+
+## Max.block.ms & buffer.emory
+
+If the producer produces faster than the broker can tke ,the records will be buffered in memory
+buffer.memory=33554432(32MB): the size of the send buffer
+That buffer will fill  up over time and fill back down when the throughput to the broker increases
+If that buffer is full(all 32MB), then the send() method will start to block(won't return right away)
+max.block.ms=6000; the tiem the send() will block untill throwing an exception, Exceptios are basically thrown then 
+    The producer has filled up its buffer
+    The broker is not accepting any new data
+    60 seconds has elapsed
+If you hit an exception hit that usually means your brokers are down, or overloaded as they can't respond to requests
+
+## elastic search and Kafka
+> https://wwwbonsai.io/
+
+> GET /
+> GET /_cat/health?v
+> GET /_cat/nodes?v
+> GET /_cat/indices?v
+
+> PUT /customer/?pretty
+> PUT /twitter/tweets/
+
+{
+    "source": "Kafka for Beginners",
+    "Instructor": "Stephene Maarek",
+    "Module": "ElasticSearch",
+}
+
+>
+> GET /twitter/tweets/1
+
+> DELETE /twitter/
 
