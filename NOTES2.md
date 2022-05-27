@@ -314,3 +314,20 @@ If you hit an exception hit that usually means your brokers are down, or overloa
 
 > DELETE /twitter/
 
+> GET localhost:9200/twitter/tweets/fR3m-4ABruG2PoHQEZSX
+
+## Delivery Semantic At Most Once
++ At most once: offsets are committed as soon as the message batch is received, if the processing goes wrong, the message will be lost,(it won't be read again)
+
+## Delivery Semantic At Least  Once
++ At least once: offsets are committed after the message is prcessed. If the processing  goes wrong, the message will be read again, This can result in duplicate processing of messages. Make sure your processing is idempotent.(i.e processing againg the messages won't impact your systems)
+
+## Delivery Semantic Exactly once:
++ Exactly once: Can be achieved for Kafka => Kafka workflows using Kafka Streams API, For Kafka => Sink workflows, use an idempotent consumer.
+
+# Bottom Line: for most applications you should use at least once processing and ensure your transformations/processing are idempotent
+
+
+
+
+
