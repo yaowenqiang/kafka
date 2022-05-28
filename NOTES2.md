@@ -450,3 +450,104 @@ This can be controlled by the broker setting offset.retention.minutes
   + This is particularly relevant for Big Data fraeworks like Spark in case the processing takes time
 + Take-away: This mechanism is used to detect a data processing issue with the consumer
 
+
+# Kafka Connect and Streams
+
+## Four Common Kafka Use Cases: 
+
+Source => Kafka  Producer API            Kafka Connect Source
+Kfaka => Kafka   Consumer,Producer API   Kafka Streams
+Kafka => Sink    Consumer API            Kafka Connect Sink
+Kafka => App     Consumer API
+
+Simplify and improving getting data in and out of kafka
+Simplify transforming data within kafka without relying on exterial libs
+
+## Why Kafka Connect
+
++ Programmers always want to import data from the same sources: Databases, JDBC, Couchbase, GoldenGate, SAP HANA, Blockchain, Cassandra, DynanoDB, FTP, IOT, MongoDB, MQTT, RethinkDB, SalesFforce, Solr, SQS, Twitter, etc...1
++ Programmers always want to store data in the same sinks: S3, ElasticSearch, HDFS, JDBC, SAP HANA, DocumentDB, Cassandra, DynanoDB, HBase, MongoDB, Redis, Solr, Splunk, Twitter, 
++ It is tough to archieve Fault tolerance, Idempotence, Distribution, Ordering,
++ Other programmers may already have done a very good job!
+
+## Kafa Connect and Streams Architecture Design
+
+### Kafka Connect - High Level
+
++ Source Connectors gto get data from Common Data Sources
++ Sink Connectors to publish that data in Common Data Stores
++ Make it easy for experiences dev to quickly get their data, reliably into Kafka
++ Part of your ETL pipeline
++ Scaling made easy from small pipelines to company-wide pipelines
++ Re-usable code
+
+
+> https://docs.confluent.io/platform/current/connect/index.html
+## What is Kafka streams?
+
++ Easy data processing and transformation library within Kafka
++ Standard Java Application
++ No need to create a separate cluster
++ Highly scalable, elastic and fault tolerant
++ Exactly Once Capabilities
++ One record at a time processing(no batching)
+
+
+## The need for a schema registry
+
++ Kafka takes bytes as an input and publishes them
++ No data verification
++ What if the producer sends bad data?
++ What if a field gets renamed?
++ What if the data format changes from one day to another?
+
+The consumers break!
+
+
+## The need for a schema registry
+
++ We need data to be self describable
++ We need to be able to evolve data without breaking downstream consumers.
++ We need schemas and a schema registry!
++ What if the Kafka Brokers where verifying the messages they receive?
++ It would break what makes Kafka so good:
+  + Kafka doesn't parse or even read your data(no CPU usage)
+  + Kafka takes bytes as an input without even loading them into memory(that's called zero copy)
+  + Kafka distributes bytes
+  + As far as Kafka is concerned, it doesn't even know if your data is an integer, a string etc.
++ The schema Registry has to be a separate components
++ Producerand Consumers need to be able to talk to it
++ The Schema Registry must be able to reject bad data
++ A common data format must be agreed upon
+  + Ti needs to support schema
+  + It needs to support evolution
+  + It needs to be lightweight
++ Enter the Confluent Schema Registry
++ And Apache.Avro as the data format
+
+## Confluent Schema Registry Purpose
+
++ Store and retrieve schemas for Producers / Consumers
++ Enforce Backward / Forward Full compatibility on topics
++ Decrease the size of  the payload of data sent to Kafka
+
+## Schema Registry gotchas
+
++ Utilizing a schema registry has a lot of benefits
++ But It implies you need to
+  + Set it up well
+  + Make sure it's highly available
+  + Artially change the producer and consumer code
++ Apache avro as a format is awesome but has a learning curve
++ The schema registry is free and open sourced, created by Confluent (creator of Kafka)
+
+
+
+
+
+
+
+
+
+
+
