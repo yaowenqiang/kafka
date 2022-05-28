@@ -23,7 +23,7 @@
 
 + At any time only ONE broker can be a leader for a given partition
 + Only that leader can receive and serve data for a partition
-+ the other brokers will synchronize the data
++ the other brokers will synchronous the data
 + therefore each partition has one leader and multiple ISR)(in-sync replica)
 
 
@@ -330,4 +330,123 @@ If you hit an exception hit that usually means your brokers are down, or overloa
 
 
 
+
+> ssh -vvv git@github.com
+
+# Consumer Poll Behavior
+
++ Kafka Comsumers have a "poll" model, while many other messaging, but in enterprises have a "push" model
++ This allows consumers to control where in the log they want to consume, how fast, and gives them the ability to replay eventsw
+
+### Consumer Poll behavior
+
+
++ Fetch.min.bytes(default 1);
+  + Controls how much data you want to pull at least on each request
+  + Helps improving throughput and decreasing request number
+  + At the cost of latency
++ Max.poll.records(default 500):
+  + Controls how many records to receive per poll request
+  + Increase if your messages are very small and have a lot of avaiable RAM
+  + Good to monitor how many records are polled per request
++ Max.partitions.fetch.bytes(default 1MB):
+  + Maximum data returned by the broker per partition
+  + If you read from 100 partitions, you'll need a lot of memory(RAM)
++ Fetch.max.bytes(default 50MB):
+  + Maximum data returned fro each fetch request(covers multiple partitions)
+  + The consumer performs multiple fetches in parallel
+
+> Change these settings only if your consumer maxes out on throughput already
+o
+
+
+## Consumer offset Commits Strategies
+
++ There are tow most common paatterns for committing offsets in a consumer aapplication
+
+2 strategies:
+
++ (easy) enable auto.commit = true & synchronous processing of batches
++ (medium) enable.auto.commit = false & manual commit of offsets
+
+'''
+while(true) {
+    List<Recores> batch = consumer.poll(Duration.ofMillis(100))
+    doSomethingSynchronous(batch)
+}
+
+
+'''
+
+
++ With auto-commit, iffsets will be committed automatically for you at regualr interval(auto.commit.interval.ms=5000 by default0 every-time you call .poll()
++ If you dno't use synchronous processing, you will be in "at-mose-once" behaviuor because offsets will be committed before your data is processed
+
+
+
+'''
+> enable.auto.commit = false & synchronous processing of batches
+while(true) {
+    batch += consumer.poll(Duration.ofMillis(100))
+    if (isReady(batch)) {
+        doSomethingSynchronous(batch);
+        consumer.commitSync();
+    }
+}
+
++ You control when you commit offsets and what's the condition for committing them.
+
+Examples: accumulating recordes into a buffer and then flushing the buffer to a database + commiting offsets then
+
+## Consumer Offset Reset behavior
+
+The behavor for the consumer is to then use:
+
++ auto.offset.reset=latest; will read from the end of the log
++ auto.offset.reset=earliest;; will read from the start of the log
++ auto.offset.reset=none;; will throw exception of no offset is found
+
+### additionally, consumer offsets can be lost:
+
++ If a consumer hasn't read new data in 1 dat(Kafka < 2.0)
++ If a consumer hasn't read new data in 7 dat(Kafka >= 2.0)
+
+This can be controlled by the broker setting offset.retention.minutes
+
+## Replaying data for Consummers:
+
++ To replay data for a consumer group:
+  + Take all the consumers from a specific group down
+  + Use "kafka-consumer-groups" command to set offset to what you want
+  + Restart consumers
++ bottom line:
+  + Set proper data retention period & offset retention period
+  + Ensure the auto offset reset behavior is the one you expect/want
+  + Use replay capability in case of unexpected behavior
+
+> kafka-consumer-groups --bootstrap-server localhost:9092 --group groupname --reset-offsets --execute --to-earliest --toipc topic_name # reset topic offsets
+
+## Controlling Consumer Liveliness
+
++ Consumers in a Group talk to a Consumer Groups Coordinator
+| To detect consumers that are ""down"" there is a ""heartbeat" "mechanism and a ""poll"" mechanism
++ To avoid issues, consumers are encouraged to process data fast and poll offen
+
+### consumer Heartbeat Thread
+
++ Session.timeout.ms(default 10 seconds):
+  + Heartbeats are sent periodically to the broker
+  + If no heartbeat is sent during that period, the consumer is considered dead
+  + Set even lower to faster consumer rebalances
++ Heartbeat.interval.ms(default 3 seconds):
+  + How often to send heartbeats
+  + Usually set to 1/3rd of session.timeout.ms
++ Take-away: This mechanism is used to detect a consumer application being down
+
+### ConsumerPoll Thread
+
++ max.poll.interval.ms(default 5 minutes):
+  + maximum amount of time between two poll()) calls before declaring the consumer dead
+  + This is particularly relevant for Big Data fraeworks like Spark in case the processing takes time
++ Take-away: This mechanism is used to detect a data processing issue with the consumer
 
