@@ -542,6 +542,188 @@ The consumers break!
 + The schema registry is free and open sourced, created by Confluent (creator of Kafka)
 
 
+# Partitions Count, Replication Factor
+
++ The two most important parameters when creating a topic:
++ They impact performance and durability of the system overall
++ It is best to get the parameters right the first time
+  + If the Partition Count increases during a topic lifecycle, you will break your keys ordering guarantees
+  + IF the Replication factor increases, during a topic lifecycle, you put more presure on your cluster, which can lead to unexpected performance decrease
+
+
+## Partition Count
+
++ Each partition can handle a throughput of a few MB/s(measure it for your setup!)
++ More partitions implies:
+  + Better parllelism, better throughput
+  + Ability to run more consumers in a group to scale
+  + Ability to leverage more brokers if you have a large cluster
+  + But more elections to perform for Zookeeper
+  + But more files opened on Kafka
++ Guidelines:
+  + Partitions per topic = MILLION DOLLOR QUESTION
+    + (intuition) Small server(< 6 brokers) 2 x # brokers
+    + (intuition) Big server(> 12 brokers) 1 x # of brokers
+    + Adjust for number of consumer you need to run in parallel at peak throughput
+    + Adjust for producer throughput(increase if super-high throughput or projected increase in the next 2 years)
++ TEST! Every Kafka cluster will have different performance.
++ Don't create a topic with 1000 partitions!
+
+## Replication Factor:
+
++ Should be at least 2, usually 3, maximum 4
++ The higher the replication factor(N):
+  + Better resilience of your system(N-1 borkers can fail)
+  + BUT more replication (higher latency if acks=all)
+  + BUT more disk space on your system(50% more if RF is 3 instead of 2)
++ Guidelines:
+  + Set it to 3 to get started(you must have at least 3 brokers for that)
+  + If replication performance is an issue, get a better broker instead of less RF
+  + never set it to 1 in production
+
+## cluster guidelines:
+
++ It is pretty much accepted that a broker should not hold more than 2000 to 4000 partitions(across all topic of that broker)
++ And additionally a Kafka cluster should have a maximum of 2000 partitions across all brokers
++ The reason is that in case of brokers going down, Zookeeper needs to perform a lot of leader elections
++ IF you need more partitions in your cluster, add brokers instead
++ If you need more than 20000 partitions in your cluster(it will take time to get there!), follow the Nextflix model and create  more Kafka Clusters
++ Overall, you don't need a topic with 1000 partitions to achieve high throughput, Start at a reasonable number and test the performance
+
+## Video Analytics - MovieFlix
+## CQRS (Commands, Queries, Responsibility Segregation)
+
+> Kafka Connect CDC (Change Data Capture) Connector(Debezium)
+
+
+# Big Data Ingestion
+
++ IT is common to have "generic" connectors or solutions to offload data from Kafka to HDFS, Amazon S3, and ElasticSearch for example
++ It is also very common to have Kafka serve a "speed layer" for real time applications, while having ah "slow layer" which helps with data Ingestion into stores for later analytics
++ Kafka as a front to Big Data Ingestion is a common pattern in Big Data to provide an "ingestion buffer" in front of some stores
+
+# Kafka Cluster Setup High Level Architecture
+
++ You want multiple brokers in different data centers(racks) to distribute your load.You also want a cluster of at least 3 zookeepers
+
+
+## Kafka Cluster Setup Gotchas
+
++ It's not easy to setup a cluster
++ You want to isolate each Zookeeper & Broker on separate servers
++ Monitoring needs to be implemented
++ Operations have to be mastered
++ You need a really good Kafka admin
+
++ Alternative many different "Kafka as a Service" offerings on the web
+
++ No operational burdens(updates, monitoring, setup, etc...)
+
+##Kafka Monitoring and Operations
+
++ Kafka exposes metrics through JMX.
++ These metrics are highly important for monitoring Kafka, and ensuring the systems are behaving correctly under load.
++ Common places to host the Kafka metrics:
+  + ELK
+  + Datadog
+  + NewRelic
+  + Confluent Control Centre
+  + Promotheus
+  + Many others...!
++ Some of the most important metrics are:
+  + Under Replicated Partitions: Number of partitions are have problems with the ISR(in-sync replicas), May indicate a high load on the system
+  + Request Handlers: utilization of threads for IO, network, etc... overall utilization of an Apache Kafka broker.
+  + Request time: how long it takes to reply to requests. Lower is better, as latency will be improved.
++ Overall, have a look at the documentation here.
+  + https://kafka.apache.org/documentation/#monitoring
+  + https://docs.confluent.io/platform/current/kafka/monitoring.html
+  + https://www.datadoghq.com/blog/monitoring-kafka-performance-metrics/
+
+## Kfaka Monitors and Operations
+
++ Kafka Operations team must be able to perform the following tasks:
+  + Rolling Restart of Brokers
+  + Updating Configurations
+  + Rebalanceing Partitions
+  + Increasing replication factor
+  + Adding a Broker
+  + Replacing a Broker
+  + Removing a Broker
+  + Upgrading a Kafka Cluster with zero-downtime
+
+
+## The need for encryption, authentication, & authorization in Kafka
+
++ Currently, any client can access your Kafka cluster(authentication)
++ The clients can publish / consume any topic data(authorization)
++ All the data being sent is fully visible on the network(encryption)
+
++ Someone could intercept data being sent
++ Someone could publish bad data / steal data
++ Someone could delete topics
+
++ All these reasons push for more security and an authentication model
+
+## Encryption in Kafka
+
++ Encryption in Kafka ensures that the data exchanged between clients and brokers is secrect to rooters on the way
++ This is similar concepts to an https website
+
+## Authentication in Kafka
+
++ Authentication in Kafka ensures that only client that can prove their identity can connect to our Kafka Cluster
++ This is similar concept to a login(username/ password)
++ Authentication in Kafka can take a few forms:
+  + SSL Authentication: clients authenticate to Kafka using SSL certificates
+  + SASL Authentication:
+    + PLAIN: clients authenticate using username / password (weak - easy to setup)
+    + Kerberos: such as Microsoft Active Directory ( strong -  hard to setup )
+    + SCRAM: username /password(strong - medium to setup)
+
+
+## Authorisation in Kafka
+
++ Once a client is authenticated, Kafka can verify its identity
++ It still needs to be combined with authorisation, so that Kafka knows that
+  + "User alice can view topic finance"
+  + "User bob cannot view topic trucks"
++ ACL(Access Control Lists) have to be maintained by administration and onboard new users
+
+# Kafka Multi Cluster + Replications
+
++ Kafka can only operate well in a single region
++ Therefore, it is very common for enterprise to have Kafka clusters across the word, with some level of replication between them
++ A replication application at its core is just a consumer + a producer
++ There are different tools to perform it
+  + mirror Maker - open source tool that ships with Kafka
+  + Netflix uses Flink - they wrote their own application
+  + Uber ues uReplicator - addresses performance and operations issues with MM
+  + Comcast has their own open source Kafka Connect Source
+  + Confluent has their own Kafka Connect Source(paid)
++ There are two designs for cluster replication:
+  + Active => Passive
+    + You want to have an aggregation cluster(for example for Analytics)
+    + You want to create some form of disaster recovery strategy(it's hard)
+    + Cloud Migration(from on-premise cluster to Cloud cluster)
+  + Active => Active
+   + You have a global application
+   + You have a global dataset
++ Replicating doesn't preserver offsets, just data!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
