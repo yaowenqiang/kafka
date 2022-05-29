@@ -712,6 +712,166 @@ The consumers break!
 
 
 
+# advanced Topic Config 
+
+## Why should I care about topic config?
+
++ Brokers have defaults for all the topic configuration parameters
++ These parameters impact performance and topic behavior
++ Some topics may need different values than the defaults
+  + REplication factor
+  + number of partitions
+  + Message size
+  + Compression level
+  + Log Cleanup Policy
+  + Min insync Replicas
+  + Other configurations
++ A list of configurations can be found at: 
+> https://kafka.apache.org/documentation/#brokerconfigs
+
+> ./bin/kafka-configs.sh --zookeeper 127.0.0.1:2181 --entity-type topics --entity-name topic_name --add-config min.insync.replicas=2  --alter
+> ./bin/kafka-configs.sh --zookeeper 127.0.0.1:2181 --entity-type topics --entity-name topic_name --delete-config min.insync.replicas=2  --alter
+
+
+## Partitions and Segments
+
++ Topics are made of partitions
++ Partitions are made of segments(files)
++ Oney one segment is ACTIVE(the one data is being written to)
++ Two Segment settings:
+  + log.segment.bytes: the max size of a single Segments in bytes
+  _ log.segment.ms; the time Kafka will wait before committing the segment if not full
+
+### Segment and Indexes
+
++ Segments come with two indexes(files)
+  + An offset to position index: allows Kafka where to read to find a message
+  + A timestamp to offset index: allows Kafka to find messages with a timestamp
++ Therefore, Kafka knows where to find data in a constant time!
+
+## Segment: Why should I care?
+
++ A smaller log.segment.bytes (size, default: 1GB) means:
+  + More segments perpartitions
+  + Log Compaction happens more often
+  + But Kafka has to keep more files opened(Error: Too many open files)
++ Ask yourself, how fast will I have new segments based on throughput?
++ A smaller log.segment.ms(time, default 1 week) means:
+  + You set a max frequency for log compaction(more frequent triggers)
+  + Maybe you want daily compaction instead of weekly?
++ Ask yourself: how often do I need log compaction to happen?
+
+
+## Log cleanup Policies
+
++ Many Kafka clusters make data expire, according to a policy
++ That concept is called log cleanup
++ Policy1: log.cleanup.policy=delete(Kafka default for all user topics)
+  + Delete based on age of data(default is a week))
+  + Delete based on max size of log(default is -- == infinite)
++ Policy2: log.cleanup.policy=compact(Kafka default for topic __consumer_offsets)
+  + Delte based on keys of your messages
+  + Will delete old duplicate keys after the active segment is committed
+  + infinite time and space retention
+
+## Log Cleanup: Why and When?
+
++ Deleting data from Kafka allows you to:
+  + Control the size of the data on the disk, delte obsolete data
+  + Overall: Limit maintenance work on the Kafka Cluster
++ How often Does log cleanup happen?
+  + Log cleanup happens on your partition segments!
+  + Smaller/ More segments means that log cleanup will happen more often!
+  + Log cleanup shouldn't happen too often => takes CPU and RAM resources
+  + The cleaner checks for work every 15 seconds(log.cleaner.backoff.ms)
+
+
+> ./bin/kafka-topics.sh  --zookeeper localhost:2181  --describe --topic __consumer_offsets # cleanup.policy=compact
+
+
+## Log Cleanup Policy: Delete
+
++ log.retention.hours: 
+  + number of hours to keep data for ( default is 168 - a week )
+  + Higher number means more disk space
+  + Lower number means that less data is retained (if your consumers are down for too long, they can miss data)
++ log.retention.bytes:
+  + Max size in Bytes for each partition(default is -1 - infinite)
+  + Useful to keep the size of a log under a threshold
++ Use cases - two common pair of options
+  + one week of retention:
+    + log.retention.hours=168 and log.retention.bytes=-1
+  + infinite time retention bounded by 500MB
+    + log.retention.hours=17520 and log.retention.bytes=524288000
+
+## Log Cleanup Policy: Compact 
+
++ Log compaction ensures thta your log contains at least the last known value for a specific key withing a partition
++ Very useful if we just requires a SNAPSHOT instead of full history (such as for a data table in a database)
++ The idea is that we only keep the latest "update" for a in our log
+
+### Log Compaction Guarantees
+
++ Any consumer that is reading from the tail of a log(most current data) will still see all the messages sent to the topic
++ Ordering of messages it kept, log compaction only removes some messages , but does not re-order them
++ The offset of a message is immutable (it never changes), Offsets are just skipped if a message is missing
++ Delete records can still be seen by consumers for a period of delete, retention.ms(default is 24 hours)
+
+### Lot Compaction Myth Busing
+
++ It doesn't prevent you from pushing duplicate data to Kafka
+  + De-duplication is done after a segment is committed
+  + Your consumers will still read from tail as soon as the data arrives
++ It doesn't prevent you from reading duplicate data from Kafka
+  + Same points as above
++ Log Compaction can fail from time to time
+  + it is an optimization and the compaction thread might crash
+  + Make sure you assign eough memory ot it and that it gets triggered
+  + restart Kafka if log compaction is bbroken(this is a bug and may get fixed in the future)
++ You can't trigger Log Compaction using an API call(for now...)
++ LOg compaction is configured by (log.cleanup.policy=compact):
+  + Segment.ms(default 7 days): Max amount of time to wait to close active segment
+  + Segment.bytes(default 1 G): Max size of a segment
+  + Min.compaction.lag.ms(default 0): how log to wait before a message can be compacted
+  + Delete.retention.ms (default 24 hours): wait before deleting data marked for compaction
+  + Min.Cleanable.dirty.ratio(defult 0.5) : higher = >less, more efficient cleanup Lower => opposite
+
+
+### Examples
+
+> ./bin/kafka-topics.sh --zookeeper 127.0.0.1:2181 --create --topic employee-salary --partitions 1  --replication-factor 1 --config cleanup.policy=compact --config min.cleanable.dirty.ratio=0.001 --config segment.ms=5000
+> ./bin/kafka-topics.sh --zookeeper 127.0.0.1:2181 --describe --topic employee-salary
+> ./bin/kafka-console-consumer.sh  --topic employee-salary --bootstrap-server 127.0.0.1:9092 --from-beginning --property print.key=true  --property key.separator=,
+> ./bin/kafka-console-producer.sh --broker-list 127.0.0.1:9092 --topic employee-salary --property parse.key=true --property key.separator=,
+> mark,salary: 10000
+
+
+## min.insync.replicas
+
++ Acks=al must be used in conjunction with insync.replicas.
++ min.insync.replicas=2 implies that at least 2 brokers that are ISR (including leader) must respond that they have the data.
++ That means if you use replications.factor=3 min.insync=2, acks=all,you can only tolerate 1 broker going down, otherwise the producer will receive an exception on send.
+
+
+> ./bin/kafka-topics.sh --zookeeper 127.0.0.1:2181 --create --topic high-durable --partitions 1  --replication-factor 1
+> ./bin/kafka-configs.sh  --zookeeper 127.0.0.1:2181 --entity-type topics --entity-name high-durable --alter --add-config min.insync.replicas=2
+> ./bin/kafka-topics.sh  --zookeeper 127.0.0.1:2181 --describe --topic  high-durable
+
+> vim config/server.properties
+> min.insync.replicas=2
+
+
+## unclean.leader.election
+
++ If all your In Sync Replicas die(but you still have out of sync replicas up), you have th following options:
+  + Wait for an ISR to come back online(default)
+  + Enable unclean.leader.election=true and start producing to non-ISR partitions
++ If you enable unclean.leader.election=true, you improve availability, but you will lose data because other messages on ISR will be discarded
++ Overall, this is a very dangerous setting and its implication must be understood fully before enabling it.
++ Use cases include: metrics colectin, log collectin, and other cases where data loss is somewhat acceptable, at the trade-off availability
+
+
+
 
 
 
